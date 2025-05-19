@@ -3,21 +3,52 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
-import { vpnStatuses } from "@/lib/data"
+import { VPNStatus, fetchVPNStatuses } from "@/lib/api"
+import { useEffect, useState } from "react"
 
 export function VpnStatusOverview() {
+  const [vpnStatuses, setVpnStatuses] = useState<VPNStatus[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   const formatTime = (timestamp: string | null) => {
     if (!timestamp) return "N/A"
     const date = new Date(timestamp)
     return date.toLocaleString()
   }
 
-  // Data for the pie chart
-  const locationData = [
-    { name: "Factory HQ", value: 1, color: "#4f46e5" },
-    { name: "Home Office", value: 1, color: "#10b981" },
-    { name: "Satellite Office", value: 1, color: "#f59e0b" },
-  ]
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const data = await fetchVPNStatuses()
+        setVpnStatuses(data)
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load VPN data')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+    const interval = setInterval(loadData, 5 * 60 * 1000) // Refresh every 5 minutes
+    return () => clearInterval(interval)
+  }, [])
+
+  // Calculate location data for pie chart
+  const locationData = vpnStatuses.reduce((acc, status) => {
+    const locationIndex = acc.findIndex(item => item.name === status.location)
+    if (locationIndex >= 0) {
+      acc[locationIndex].value++
+    } else {
+      acc.push({
+        name: status.location,
+        value: 1,
+        color: `#${Math.floor(Math.random()*16777215).toString(16)}` // Generate random color
+      })
+    }
+    return acc
+  }, [] as { name: string; value: number; color: string }[])
 
   const activeVpnConnections = vpnStatuses.filter((status) => status.connectionStatus === "Connected")
 
@@ -89,12 +120,12 @@ export function VpnStatusOverview() {
             <TableBody>
               {activeVpnConnections.map((vpnStatus) => (
                 <TableRow key={vpnStatus.id}>
-                  <TableCell className="font-medium">{vpnStatus.userName}</TableCell>
+                  <TableCell className="font-medium">{vpnStatus.user_name}</TableCell>
                   <TableCell>
                     <Badge variant="default">{vpnStatus.connectionStatus}</Badge>
                   </TableCell>
                   <TableCell>{vpnStatus.ipAddress}</TableCell>
-                  <TableCell>{vpnStatus.location}</TableCell>
+                  <TableCell>{vpnStatus.user_name}</TableCell>
                   <TableCell>{formatTime(vpnStatus.connectionTime)}</TableCell>
                   <TableCell>{vpnStatus.bandwidth} Mbps</TableCell>
                 </TableRow>

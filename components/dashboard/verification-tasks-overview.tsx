@@ -3,14 +3,37 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
-import { verificationTasks } from "@/lib/data"
+import { VerificationTask, fetchVerificationTasks } from "@/lib/api"
+import { useEffect, useState } from "react"
 
 export function VerificationTasksOverview() {
+  const [tasks, setTasks] = useState<VerificationTask[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   const formatTime = (timestamp: string | null) => {
     if (!timestamp) return "N/A"
     const date = new Date(timestamp)
     return date.toLocaleString()
   }
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const data = await fetchVerificationTasks()
+        setTasks(data)
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load verification tasks')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+    const interval = setInterval(loadData, 5 * 60 * 1000) // Refresh every 5 minutes
+    return () => clearInterval(interval)
+  }, [])
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -41,14 +64,21 @@ export function VerificationTasksOverview() {
   }
 
   // Data for the bar chart
-  const taskStatusData = [
-    { name: "Scheduled", count: 2, color: "#94a3b8" },
-    { name: "In Progress", count: 1, color: "#6366f1" },
-    { name: "Completed", count: 2, color: "#10b981" },
-  ]
+  const taskData = tasks.reduce((acc, task) => {
+    const priorityIndex = acc.findIndex(item => item.name === task.priority)
+    if (priorityIndex >= 0) {
+      acc[priorityIndex].tasks++
+    } else {
+      acc.push({
+        name: task.priority,
+        tasks: 1
+      })
+    }
+    return acc
+  }, [] as { name: string; tasks: number }[])
 
   // Filter tasks that are scheduled or in progress
-  const pendingTasks = verificationTasks.filter((task) => task.status === "Scheduled" || task.status === "In Progress")
+  const pendingTasks = tasks.filter((task) => task.status === "Scheduled" || task.status === "In Progress")
 
   return (
     <div className="space-y-8">
@@ -57,13 +87,13 @@ export function VerificationTasksOverview() {
           <h3 className="text-lg font-medium mb-4">Verification Tasks by Status</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={taskStatusData}>
+              <BarChart data={taskData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="count" name="Tasks" fill="#4f46e5" />
+                <Bar dataKey="tasks" name="Tasks" fill="#4f46e5" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -109,7 +139,7 @@ export function VerificationTasksOverview() {
               {pendingTasks.map((task) => (
                 <TableRow key={task.id}>
                   <TableCell className="font-medium">{task.taskName}</TableCell>
-                  <TableCell>{task.computerName}</TableCell>
+                  <TableCell>{task.taskName}</TableCell>
                   <TableCell>{task.assigneeName}</TableCell>
                   <TableCell>
                     <Badge variant={getStatusBadgeVariant(task.status)}>{task.status}</Badge>
